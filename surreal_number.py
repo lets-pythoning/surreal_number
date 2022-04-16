@@ -1,6 +1,5 @@
 from itertools import product
-from turtle import left
-from typing import Set
+from typing import Set, Union
 
 class BasicSurrealNumber(object):
     
@@ -42,19 +41,14 @@ class BasicSurrealNumber(object):
         left_part = ', '.join(str(member) for member in self.left)
         right_part = ', '.join(str(member) for member in self.right)
 
-        if not left_part and not right_part:
-            return '.'
         if not left_part:
-            return f'{{ |{right_part}}}'
+            return f'{{ |{right_part}}}' if right_part else '.'
         if not right_part:
             return f'{{{left_part}| }}'
 
         return f'{{{left_part}|{right_part}}}'
 
 class SurrealNumber(BasicSurrealNumber):  # 为了避免类过于复杂，将比较运算符和算术运算符分离
-    
-    def __repr__(self) -> str:
-        return self.__str__()
     
     def __add__(self, other: 'SurrealNumber') -> 'SurrealNumber':
         left_result = {other + left_member for left_member in self.left}  # 这里是用于存储最终返回值的集合
@@ -67,13 +61,89 @@ class SurrealNumber(BasicSurrealNumber):  # 为了避免类过于复杂，将比
 
         return self.__class__(left=left_result, right=right_result)
 
-    def __invert__(self) -> 'SurrealNumber':
+    def __neg__(self) -> 'SurrealNumber':
         return self.__class__(
             left={-right_member for right_member in self.right},
             right={-left_member for left_member in self.left}
         )
+    
+    def __sub__(self, other: 'SurrealNumber') -> 'SurrealNumber':
+        return self + (-other)
+
+    @staticmethod
+    def _mul_handler(
+        x: 'SurrealNumber',
+        y: 'SurrealNumber',
+        x_list: Set['SurrealNumber'],
+        y_list: Set['SurrealNumber']
+    ) -> Set['SurrealNumber']:
+        
+        return {
+            x_member * y
+            + y_member * x
+            - x_member * y_member
+            for x_member, y_member in product(x_list, y_list)
+        }
+
+    def __mul__(self, other: 'SurrealNumber') -> 'SurrealNumber':  # 操作逻辑与上方的 __add__ 基本相同
+        left_result = self._mul_handler(self, other, self.left, other.left)
+        right_result = self._mul_handler(self, other, self.right, other.right)
+        left_updater = self._mul_handler(self, other, self.left, other.right)
+        right_updater = self._mul_handler(self, other, self.right, other.left)
+        
+        left_result = left_result.union(left_updater)
+        right_result = right_result.union(right_updater)
+
+        return self.__class__(left=left_result, right=right_result)
+
+class SurrealNumberClass(object):
+    
+    __slot__ = ['representation', 'left', 'right']
+    
+    def __init__(self, group: Union['SurrealNumber', 'SurrealNumberClass', Set['SurrealNumber']]) -> None:
+        self.group = set()
+        self.representation = None
+        if isinstance(group, set):
+            while group.len():
+                self.add_member(group.pop())
+        
+        elif isinstance(group, SurrealNumber):
+            self.group.add(group)
+            self.representation = group
+        
+        else:
+            self.representation = group.representation
+            self.merge(group)
+    
+    def add_member(self, member: 'SurrealNumber') -> None:
+        if self.representation is None:
+            self.representation = member
+            self.group.add(member)
+
+        elif self.representation >= member and self.representation <= member:
+            self.group.add(member)
+            if len(member.left) + len(member.right) < len(self.representation.left) + len(self.representation.right):
+                self.representation = member
+                
+    def merge(self, other: 'SurrealNumberClass') -> None:
+        if self.representation <= other.representation and self.representation >= other.representation:
+            self.group.update(other.group)
+            other.group = self.group.copy()
+        
+        if len(other.representation.left) + len(other.representation.right) < len(self.representation.left) + len(self.representation.right):
+            self.representation = other.representation
+        else:
+            other.representation = self.representation
+    
+    def __add__(self, other: 'SurrealNumberClass') -> 'SurrealNumberClass':  # 对数集做运算的结果是对数集中每个数做运算
+        result = self.__class__
+        for self_member, other_member in product(self.group, other.group):
+            result.add_member(self_member + other_member)
+        
+        return result
 
 BSN = BasicSurrealNumber
 SN = SurrealNumber
+SNC = SurrealNumberClass
 
 __all__ = ['BSN', 'BasicSurrealNumber', 'SN', 'SurrealNumber']
